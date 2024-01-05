@@ -11,7 +11,10 @@ def load_config(json_file):
         return json.load(file)
 
 # Initialize the Discord bot
-bot = commands.Bot(command_prefix='!')
+intents = discord.Intents.default()
+intents.messages = True
+intents.guilds = True
+bot = commands.Bot(command_prefix='!', intents=intents)
 
 async def send_output_to_discord(target, output, file_paths):
     # Determine the destination (user or channel) for the message
@@ -33,20 +36,20 @@ async def send_output_to_discord(target, output, file_paths):
         with open(file_path, 'rb') as file:
             await destination.send(file=discord.File(file))
 
+# Parse arguments from command line
+parser = argparse.ArgumentParser(description="Run a bash command and send output to Discord.")
+parser.add_argument('command', type=str, help='The bash command to run')
+parser.add_argument('--lines', type=int, help='Number of lines from the end of output to send')
+parser.add_argument('--files', nargs='*', help='Paths to files to send', default=[])
+parser.add_argument('--user', type=int, help='Discord user ID to send the message to', default=None)
+parser.add_argument('--channel', type=int, help='Discord channel ID to send the message to', default=None)
+parser.add_argument('--config', type=str, help='Path to JSON configuration file', default='default_config.json')
+parser.add_argument('--token', type=str, help='Discord bot token', default=None)
+args = parser.parse_args()
+
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user}')
-
-    # Parse arguments from command line
-    parser = argparse.ArgumentParser(description="Run a bash command and send output to Discord.")
-    parser.add_argument('command', type=str, help='The bash command to run')
-    parser.add_argument('--lines', type=int, help='Number of lines from the end of output to send')
-    parser.add_argument('--files', nargs='*', help='Paths to files to send', default=[])
-    parser.add_argument('--user', type=int, help='Discord user ID to send the message to', default=None)
-    parser.add_argument('--channel', type=int, help='Discord channel ID to send the message to', default=None)
-    parser.add_argument('--config', type=str, help='Path to JSON configuration file', default='default_config.json')
-    parser.add_argument('--token', type=str, help='Discord bot token', default=None)
-    args = parser.parse_args()
 
     # Load configuration file
     config = load_config(args.config)
@@ -58,12 +61,13 @@ async def on_ready():
     channel_id = args.channel if args.channel else config['Defaults'].get('Channel')
 
     # Execute the bash command
-    process = subprocess.Popen(args.command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    output, _ = process.communicate()
+    with open('/tmp/output.txt', 'w') as file:
+        process = subprocess.Popen(args.command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 
-    # Decode and split the output into lines, then get the last N lines
-    output_lines = output.decode('utf-8').split('\n')
-    last_lines = '\n'.join(output_lines[-lines:])
+        # Read the output line by line and write to terminal and file
+        for line in iter(process.stdout.readline, ''):
+            print(line, end='')  # Print to terminal
+            file.write(line)     # Write to file
 
     # Determine the target (user or channel) to send the message to
     if user_id:
@@ -75,6 +79,11 @@ async def on_ready():
         await bot.close()
         return
 
+    # Read the last N lines from the file
+    with open('/tmp/output.txt', 'r') as file:
+        output_lines = file.readlines()
+    last_lines = ''.join(output_lines[-lines:])
+
     # Send the output and files to Discord
     await send_output_to_discord(target, last_lines, args.files)
 
@@ -82,4 +91,4 @@ async def on_ready():
     await bot.close()
 
 # Run the bot
-bot.run(load_config(args.config)['Discord']['Token'])
+bot.run(load_config(args.config)['Discord']['Token'] if args.token is None else args.token)

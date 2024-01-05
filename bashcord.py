@@ -47,27 +47,27 @@ parser.add_argument('--config', type=str, help='Path to JSON configuration file'
 parser.add_argument('--token', type=str, help='Discord bot token', default=None)
 args = parser.parse_args()
 
+# Load configuration file
+config = load_config(args.config)
+
+# Override defaults with command-line arguments
+token = args.token if args.token else config['Discord']['Token']
+lines = args.lines if args.lines is not None else config['Defaults']['Lines']
+user_id = args.user if args.user else config['Defaults'].get('User')
+channel_id = args.channel if args.channel else config['Defaults'].get('Channel')
+
+# Execute the bash command
+with open('/tmp/output.txt', 'w') as file:
+    process = subprocess.Popen(args.command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+    # Read the output line by line and write to terminal and file
+    for line in iter(process.stdout.readline, ''):
+        print(line, end='')  # Print to terminal
+        file.write(line)     # Write to file
+
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user}')
-
-    # Load configuration file
-    config = load_config(args.config)
-
-    # Override defaults with command-line arguments
-    token = args.token if args.token else config['Discord']['Token']
-    lines = args.lines if args.lines is not None else config['Defaults']['Lines']
-    user_id = args.user if args.user else config['Defaults'].get('User')
-    channel_id = args.channel if args.channel else config['Defaults'].get('Channel')
-
-    # Execute the bash command
-    with open('/tmp/output.txt', 'w') as file:
-        process = subprocess.Popen(args.command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-
-        # Read the output line by line and write to terminal and file
-        for line in iter(process.stdout.readline, ''):
-            print(line, end='')  # Print to terminal
-            file.write(line)     # Write to file
 
     # Determine the target (user or channel) to send the message to
     if user_id:
